@@ -314,11 +314,11 @@ init_state = None  # this is the root of the search tree
 
 # Initialize data
 
-with open('/Users/bclement/Documents/wordle_words_2315.txt') as f:
+with open('wordle_words_2315.txt') as f:
     wordle_solutions = json.load( f )
     wordle_solutions = wordle_solutions
 
-with open('/Users/bclement/Documents/wordle_herrings.txt') as f:
+with open('wordle_herrings.txt') as f:
     wordle_herrings = json.load( f )
     wordle_herrings = wordle_herrings
 
@@ -345,13 +345,14 @@ def init_globals():
 
     tl_start = process_time()
 
-    remaining_candidates = read_remaining_candidates_from_file()
+    rem_cand_filename = "remaining_candidates_" + str(len(wordle_solutions)) + ".bin"
+    remaining_candidates = read_remaining_candidates_from_file(rem_cand_filename)
     if remaining_candidates is None or len(remaining_candidates) != len(wordle_solutions):
         print("Computing remaining_candidates matrix")
     else:
         add_time = process_time() - tl_start
         print( "seconds elapsed after reading remaining_candidate sets from file is " + str( add_time ) )
-        #return
+        return
 
     # Compute remaining_candidates[solution][guess] = remaining candidate set as bloom filter
     # First allocate the big matrix
@@ -372,6 +373,12 @@ def init_globals():
                 remaining_candidates[sol_i][guess_i] = remaining_set
         add_time = process_time() - tl_start
         print( "seconds elapsed after computing sets for word #" + str(sol_i) + " (" + solution + ") is " + str( add_time ) )
+
+    print("writing out remaining_candidates to file to load next time and avoid recomputing")
+    write_remaining_candidates(rem_cand_filename)
+    print("remaining_candidates written to file")
+    add_time2 = process_time() - add_time
+    print("seconds elapsed to write file is " +  str(add_time2))
 
     #print( "size of remaining_candidates = " + str(sys.getsizeof(remaining_candidates)))  # this doesn't do what you want
 
@@ -462,7 +469,7 @@ def read_remaining_candidates_from_file(fn='remaining_candidates.bin'):
         f = open(fn, 'rb')
         cands = pickle.load(f)
     except Exception as e:
-        print('remaining_candidates.bin not found or pickle.load() failed')
+        print(fn + ' not found or pickle.load() failed')
         print(str(e))
     return cands
 
@@ -833,7 +840,6 @@ def run():
     """ Initialize the search and start running it. """
     global init_state
     init_globals()
-    write_remaining_candidates()
     init_state = State()
     init_state.remaining_candidates = all_solution_candidates
     run_no_init()
@@ -841,6 +847,7 @@ def run():
 def run_no_init():
     """ Execute the search assuming that other things are initialized. """
     global init_state
+    tl_start = process_time()
     while not done(init_state):
         s: State = choose_state(init_state)
         if debug:
@@ -850,6 +857,8 @@ def run_no_init():
     print("init_state success probability = " + str(init_state.prob_success) + ", avg guesses = " + str(init_state.average_remaining_guesses))
     for g in init_state.alternative_next_guesses:
         print("prob success of choosing " + wordle_solutions[g.word] + " = " + str(g.prob_success) + "; avg guesses = " + str(g.average_remaining_guesses))
+    add_time = process_time() - tl_start
+    print("seconds elapsed to build policy = " + str(add_time))
 
 def down_select_candidates(solution, guess, candidates):
     remaining = remaining_candidates[solution][guess] & candidates
@@ -1065,8 +1074,14 @@ def play(solution):
     return count
 
 def test():
-    """ Build the policy."""
+    """ Build the policy """
     global wordle_solutions
+
+    # You may uncomment a line below for a simpler test that doesn't include all 2315 words.
+    #   wordle_solutions = wordle_solutions[0:400]
+    #   wordle_solutions = ['abcd' + x for x in ['e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm']] + ['dfhjl', 'egikm']
     run()
+
+
 
 test()
