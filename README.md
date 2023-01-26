@@ -27,9 +27,9 @@ This means that the policy converged for the initial guess, "parse," with a 1.0 
 probability of guessing a word in 6 guesses.  Eventually, other words will converge.
 Spoiler alert!  "parse" is the only word we've found so far that has a guaranteed 
 always-win policy.  The guess policy for some other good choices will fail for one or
-two out of the 2315 words.  Actually, the first word to converge is "trace:"
+two out of the 2315 words.  Actually, some of those are actually the first to converge:
 
-    - - - [('trace', 0.9991360691144718)] - - -
+    - - - [('trace', 0.9991360691144718), ('crate', 0.9995680345572366)] - - -
 
 There is a done() function that determines when to stop searching.  By default, it tries to
 compute an optimal policy for each word (aka guess) with this line: 
@@ -71,3 +71,9 @@ wordle.py has a long discussion in comments at the top that describes how the co
 
 Some preliminary code is there for optimizing for the fewest guesses.  It doesn't work yet,
 and the part that needs work is labeled with "HERE!"
+
+The policy search is currently restricted to the 2315 common 5-letter words.  The
+"wordle_herrings.txt" file includes 10,000+ different 5-letter words that the wordle
+game accepts but will never be the correct answer.  The code can be configured to
+guess using the additional herrings, but that hasn't been tried and will likely have bugs.
+
