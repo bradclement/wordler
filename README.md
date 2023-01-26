@@ -31,6 +31,9 @@ two out of the 2315 words.  Actually, some of those are actually the first to co
 
     - - - [('trace', 0.9991360691144718), ('crate', 0.9995680345572366)] - - -
 
+Assuming the code is correct and that you don't cheat, this means that it is not possible
+to guarantee a 6-guess win with "trace" or "crate." 
+
 There is a done() function that determines when to stop searching.  By default, it tries to
 compute an optimal policy for each word (aka guess) with this line: 
 
