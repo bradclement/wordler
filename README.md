@@ -1,9 +1,42 @@
 # wordler
 Python that finds the optimal policy to play wordle (including the best initial guess).
 
-Run wordler.py with a debugger (like PyCharm's) so that you can stop it before it uses all of 
-the RAM on your computer.  It will first take 2 or 3 hours to precompute a matrix for quick 
-determination of remaining candidate words after a guess.  It is written to file (1.5 GB) so 
+**Why?**
+<br>(skip this part to see how to run it)
+
+You may have seen an article or video about information theory and "soare" being best.
+That's a strategy to use the word that eliminates the most choices so that you
+can narrow down quickly.  But, that isn't necessarily perfect.  A pathological (and 
+admittedy likely fictional) case might be that you pick a word that narrows down to 
+only 8 words, but they all have the same last 4 letters (eight, fight, light, might,
+night, right, sight, wight).  So, the word that eliminates the most choices may cause
+you to lose.  It's just a good heuristic for smart playing . . . by computers since
+most humans can't count how many hundreds of choices remain after some guess.
+<br>
+(TODO -- add an example of why it isn't perfect and do an experiment to see how well it does.)
+
+The idea and challenge here is to prove what word or words are best.  The spoiler: there are 
+multiple first words that can guarantee to always win within six guesses . . . if you are
+smart enough to know what's the best guess in every situation or a computer that can remember
+them all.
+
+An additional challenge is to find the words that result in the fewest guesses on average.
+No spoiler yet on that.
+
+**Running it**
+
+1. download the code
+   - This should be easy if you are reading this README
+2. run `python wordler.py` from a command line terminal while in the same directory as wordler.py
+   - Better would be to run it with a debugger as explained below
+   - I'm using Python 3.10, but something recent should be fine. 
+
+It's better to run wordler.py with a debugger (like PyCharm's) so that you can stop it 
+instead of waiting hours (or days?) for it to complete.  You can then investigate and play
+around as described later.
+
+It will first take 2 or 3 hours to precompute a matrix for quick determination of 
+remaining candidate words after a guess.  It is written to file (1.5 GB) so 
 that the next time you run, you don't have to wait 2 or 3 hours again to recompute it.
 
 Then, a policy will be computed for a yet unknown amount of time to determine the likelihoods
@@ -27,9 +60,11 @@ On first report, essentially nothing has completed, yet.  But, after two hours y
     1 others with prob > 50%: {'elate': (0.8614924846828584, 0.9991360691144708)}
 
 This means that the optimal policy was found for 24 words, and three of them have an
-always-win policy.  The policy converges when the min/max probabilities are the same.
-As possible games are explored, it gets a better estimate of how many will win and the
-gap between the min and max shrinks.  It starts out with min = 0.0 and max = 1.0.
+always-win-within-6-guesses policy.  The policy "converges" when the min/max probabilities
+(the pairs of numbers shown above) are the same. The words/guesses each start out with 
+min = 0.0 and max = 1.0, meaning it could be anything.  As possible games are explored, it gets 
+a better estimate of what the best choices are and how many will win, and the gap between
+the min and max shrinks.
 
 As you can see above "crate" converged on a probability of 0.9995680345572366.  If you
 multiply that times 2315 (the number of all solution words), that is 2314.0.  This means
@@ -80,3 +115,6 @@ The policy search is currently restricted to the 2315 common 5-letter words.  Th
 "wordle_herrings.txt" file includes 10,657 other 5-letter words that the wordle
 game accepts but will never be the correct answer.  The code can be configured to
 guess using the additional herrings, but that hasn't been tried and will likely have bugs.
+
+Python was probably a bad choice for run time efficiency.  This evolved from an interview
+question and wasn't expected to get this far.
