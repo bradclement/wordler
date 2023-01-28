@@ -15,10 +15,10 @@ most humans can't count how many hundreds of choices remain after some guess.
 <br>
 (TODO -- add an example of why it isn't perfect and do an experiment to see how well it does.)
 
-The idea and challenge here is to prove what word or words are best.  The spoiler: there are 
-multiple first words that can guarantee to always win within six guesses . . . if you are
-smart enough to know what's the best guess in every situation or a computer that can remember
-them all.
+The idea and challenge here is to **prove** what word or words are best.  The spoiler: there are 
+multiple first words that can guarantee to always win within six guesses . . . as long as
+you are smart enough to know what's the best guess in every situation or a computer that
+can remember them all.
 
 An additional challenge is to find the words that result in the fewest guesses on average.
 No spoiler yet on that.
