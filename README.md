@@ -1,8 +1,9 @@
 # wordler
 Python that finds the optimal policy to play wordle (including the best initial guess).
 
-**Why?**
-<br>(skip this part to see how to run it)
+## Why?
+
+(skip this part to see how to run it)
 
 You may have seen an article or video about information theory and "soare" being best.
 That's a strategy to use the word that eliminates the most choices so that you
@@ -23,7 +24,7 @@ can remember them all.
 An additional challenge is to find the words that result in the fewest guesses on average.
 No spoiler yet on that.
 
-**Running it**
+## Running it
 
 1. download the code
    - This should be easy if you are reading this README
@@ -118,3 +119,47 @@ guess using the additional herrings, but that hasn't been tried and will likely 
 
 Python was probably a bad choice for run time efficiency.  This evolved from an interview
 question and wasn't expected to get this far.
+
+Results so far below.  In another run without using the cache, "parse" was found
+to be (1.0, 1.0) as well.
+
+    {
+        "crate": (0.9995680345572366, 0.9995680345572354),
+        "exalt": (0.9991360691144714, 0.9991360691144708),
+        "after": (0.998992080633549, 0.9989920806335493),
+        "react": (0.9987041036717075, 0.9987041036717063),
+        "alert": (0.9995680345572366, 0.9995680345572354),
+        "elate": (0.9991360691144713, 0.9991360691144708),
+        "water": (0.9989200863930889, 0.9989200863930886),
+        "pleat": (0.9995680345572362, 0.9995680345572354),
+        "leapt": (0.999568034557236, 0.9995680345572354),
+        "trade": (0.9995680345572364, 0.9995680345572354),
+        "trace": (0.9991360691144711, 0.9991360691144708),
+        "least": (0.9987041036717065, 0.9987041036717063),
+        "latte": (0.9987580993520521, 0.9987580993520518),
+        "bleat": (0.9995680345572362, 0.9995680345572354),
+        "plate": (1.0000000000000002, 1.0),
+        "elite": (0.9999999999999994, 1.0),
+        "dealt": (0.9991360691144705, 0.9991360691144708),
+        "lathe": (0.9978401727861771, 0.9978401727861771),
+        "earth": (0.9982721382289421, 0.9982721382289417),
+        "alter": (0.9992224622030257, 0.9992224622030237),
+        "tread": (0.9995680345572362, 0.9995680345572354),
+        "delta": (0.9991360691144713, 0.9991360691144708),
+        "steal": (0.9992800575953931, 0.9992800575953924),
+        "slate": (0.9991360691144714, 0.9991360691144708),
+        "table": (1.0000000000000013, 1.0),
+        "heart": (0.9987041036717057, 0.9987041036717063),
+        "stale": (0.9991360691144716, 0.9991360691144708),
+        "title": (0.9992552319952347, 0.9992552319952335),
+        "hater": (0.9981641468682512, 0.9981641468682505),
+        "leant": (0.9987041036717067, 0.9987041036717063),
+        "petal": (1.0000000000000004, 1.0),
+        "later": (0.9987904967602601, 0.9987904967602591),
+        "cleat": (0.9995680345572362, 0.9995680345572354),
+        "eater": (0.4922132146176859, 0.9988120950323974),
+        "avert": (0.9995680345572364, 0.9995680345572354),
+        "cater": (0.9992191393919255, 0.9992191393919255),
+        "eclat": (0.9991360691144713, 0.9991360691144708),
+    }
+
