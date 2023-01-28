@@ -14,12 +14,12 @@ easier sets of words.  That may be a better way to get more familiar with how it
 
 After precomputing the matrix, occasionally, progress is reported out:
 
-    cache_size = 131367, hits = 5257953, misses = 131367, hit/miss = 40.024914932974035, 3.7075192833333332 CPU minutes
-    words found so far with policies guaranteeing 100% wins : []
+    cache_size = 0, hits = 0, misses = 0, hit/miss = N/A, 2.650000000000337e-05 CPU minutes
+    first guesses found so far with policies guaranteeing 100% wins: []
     0 first guesses converged: {}
     0 others with prob > 50%: {}
 
-Essentially, nothing has completed, yet.  But, after two hours you may see
+On first report, essentially nothing has completed, yet.  But, after two hours you may see
 
     cache_size = 431186, hits = 19665584, misses = 431186, hit/miss = 45.60812271270403, 140.71542415000002 CPU minutes
     words with policies guaranteeing 100% wins : ['plate', 'table', 'petal']
