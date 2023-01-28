@@ -59,8 +59,9 @@ There's a play() function where once you've computed a policy, you can try it ou
 In PyCharm, I modify the "Run Configuration" to "Run with Python Console" so that I can
 pause the python run with the debugger and do the play command above.
 
-You can play against all words and see how it did.  I think this one below was when "crate"
-had the best-so-far policy.
+You can play against all words and see how it did.  I think this one below was when "trace"
+had the best-so-far policy.  Notice that there were two words that required 8 guesses.  That's
+consistent with the 0.9991360691144718 win probability for "trace."
 
     counts = [play(w) for w in wordle_solutions]
 

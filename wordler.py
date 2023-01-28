@@ -812,8 +812,8 @@ def done(s: State):
         print(str(len(in_progress_guesses)) + " others with prob > 50%: " + str(in_progress_guesses))
 
     # An alternative strategy is commented out below.
-    #return converged(s)
-    return all_guesses_done(s)
+    #return converged(s)   # That will return once a best word is found.
+    return all_guesses_done(s)   # This won't return until the optimal policies of all first words are computed.
 
 def cmp(pp1, pp2):
     """ Compare two pairs of floating point numbers while simply handling floating point error. """
@@ -830,7 +830,7 @@ def choose_state(s: State):
 
     # some options
     expand_all_alternatives = True
-    best_chance_of_reducing_uncertainty = False  # unimplemented -- not sure how this would work, but the idea is to get the min & max range narrowed.
+    best_chance_of_reducing_uncertainty = False  # unimplemented -- not sure how this would work, but the thought is to get the min & max range narrowed as opposed to finding the best.
 
     if expand_all_alternatives and len(s.alternative_next_guesses) < s.get_num_remaining_candidates():
         return s
@@ -1144,6 +1144,11 @@ def test():
     run()
 
 def tree_size(s: State):
+    """
+    Walks the tree for all guesses for all games and counts the states it visits.  This would be an accurate
+    count of the states in memory if the cache were turned off (cache_on = False).  So, when compared with cache_size(),
+    tree_size() gives an idea of how effective the cache is.
+    """
     if s is None or not s.alternative_next_guesses:
         return 0
     ct = len(s.alternative_next_guesses)
