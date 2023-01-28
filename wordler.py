@@ -311,6 +311,8 @@ remaining_candidates = []  # remaining_candidates[solution][guess] = remaining c
 all_guess_candidates = 0  # this is the bloom filter int representing the set of all, a binary 1 for each word.
 all_solution_candidates = 0  # the bloom filter for just the solution candidates
 init_state = None  # this is the root of the search tree
+tl_start = 0  # initial cpu time marker; compute cpu time since tl_start was set with process_time() - tl_start
+
 
 # Initialize data
 
@@ -330,6 +332,7 @@ def init_globals():
     global all_solution_candidates
     global all_guess_candidates
     global remaining_candidates
+    global tl_start
     # global all_candidates
 
     # guess candidates can be restricted to solutions or solutions + herrings
@@ -484,9 +487,18 @@ class State:
         self.prior_guesses = set()   # TreeSet(word_index)  # 14 bytes?
         self.incoming_guesses = set()  # TreeSet(Guess)
         self.remaining_candidates = 0  # BloomFilter as int # 290 bytes
+        self.num_remaining_candidates = 0  # so we don't have to call num_ones_in_bits() all the time
         self.alternative_next_guesses = set()  # TreeSet(Guess)
         self.prob_success = (0.0, 1.0)
         self.average_remaining_guesses = (1.0, 6.0)
+
+    def get_num_remaining_candidates(self):
+        if self.num_remaining_candidates > 0:
+            return self.num_remaining_candidates
+        if self.remaining_candidates == 0:
+            return 0
+        self.num_remaining_candidates = num_ones_in_bits(self.remaining_candidates)
+        return self.num_remaining_candidates
 
     def choose_next_guess( self ):
         """
@@ -524,8 +536,8 @@ class State:
             return True
         if len(self.prior_guesses) > len(other.prior_guesses):
             return False
-        num_remaining_self = num_ones_in_bits(self.remaining_candidates)
-        num_remaining_other = num_ones_in_bits(other.remaining_candidates)
+        num_remaining_self = self.get_num_remaining_candidates()
+        num_remaining_other = other.get_num_remaining_candidates()
         if num_remaining_self < num_remaining_other:
             return True
         if num_remaining_self > num_remaining_other:
@@ -549,8 +561,8 @@ class State:
             return True
         if len(self.prior_guesses) > len(other.prior_guesses):
             return False
-        num_remaining_self = num_ones_in_bits(self.remaining_candidates)
-        num_remaining_other = num_ones_in_bits(other.remaining_candidates)
+        num_remaining_self = self.get_num_remaining_candidates()
+        num_remaining_other = other.get_num_remaining_candidates()
         if num_remaining_self < num_remaining_other:
             return True
         if num_remaining_self > num_remaining_other:
@@ -576,8 +588,8 @@ class State:
             return True
         if len(self.prior_guesses) < len(other.prior_guesses):
             return False
-        num_remaining_self = num_ones_in_bits(self.remaining_candidates)
-        num_remaining_other = num_ones_in_bits(other.remaining_candidates)
+        num_remaining_self = self.get_num_remaining_candidates()
+        num_remaining_other = other.get_num_remaining_candidates()
         if num_remaining_self > num_remaining_other:
             return True
         if num_remaining_self < num_remaining_other:
@@ -601,8 +613,8 @@ class State:
             return True
         if len(self.prior_guesses) < len(other.prior_guesses):
             return False
-        num_remaining_self = num_ones_in_bits(self.remaining_candidates)
-        num_remaining_other = num_ones_in_bits(other.remaining_candidates)
+        num_remaining_self = self.get_num_remaining_candidates()
+        num_remaining_other = other.get_num_remaining_candidates()
         if num_remaining_self > num_remaining_other:
             return True
         if num_remaining_self < num_remaining_other:
@@ -682,6 +694,42 @@ class Guess:
         self.average_remaining_guesses = (min_garg, max_garg)
 
 
+state_cache = [{} for i in range(6)]
+hits = 0
+misses = 0
+
+cache_on = True
+def get_state(num_guesses: int, remaining_candidates: int):
+    if not cache_on: return None
+    global hits
+    inner = state_cache[num_guesses]
+    if remaining_candidates in inner:
+        hits += 1
+        return inner[remaining_candidates]
+    return None
+
+def get_or_cache_state(s: State):
+    if not cache_on: return s
+    global state_cache
+    global hits
+    global misses
+    inner = state_cache[len(s.prior_guesses)]
+    if s.remaining_candidates in inner.keys():
+        cs = inner[s.remaining_candidates]
+        if cs is not None:
+            hits += 1
+            return cs
+        misses += 1
+        inner[s.remaining_candidates] = s
+        return s
+    misses += 1
+    inner[s.remaining_candidates] = s
+    return s
+
+def cache_size():
+    return sum([len(state_cache[i]) for i in range(6)])
+
+
 # lower number is higher priority
 def q_priority(s: State):
     """
@@ -689,7 +737,7 @@ def q_priority(s: State):
     states.  A competing approach for expansion is to walk down the search tree instead of having a queue.
     """
     return (1.0 - s.prob_success[0], 1.0 - s.prob_success[1],
-            len(s.prior_guesses), len(s.alternative_next_guesses), num_ones_in_bits(s.remaining_candidates))
+            len(s.prior_guesses), len(s.alternative_next_guesses), s.get_num_remaining_candidates())
 
 def runq():
     """ The main search loop for using a queue of search states (superseded by run()). """
@@ -708,7 +756,7 @@ def runq():
         for c in child_states:
             if c.prob_success[0] < c.prob_success[1]:
                 q.put((q_priority(c), c))
-        if len(s.alternative_next_guesses) < num_ones_in_bits(s.remaining_candidates):
+        if len(s.alternative_next_guesses) < s.get_num_remaining_candidates():
             if (s.prob_success[0] < s.prob_success[1] and
                     (len(s.incoming_guesses) == 0 or
                      s.prob_success[1] >= max([max([g.prob_success[0] for g in i.prev_state.alternative_next_guesses]) for i in s.incoming_guesses]))):
@@ -723,7 +771,7 @@ def runq():
 def all_guesses_done(s: State):
     """ Returns whether all of the alternative guesses for the State have been sufficiently explored to converge on
         a probability of success or on an expected number of guesses left. """
-    if len(s.alternative_next_guesses) < num_ones_in_bits(s.remaining_candidates):
+    if len(s.alternative_next_guesses) < s.get_num_remaining_candidates():
         return False
     for g in s.alternative_next_guesses:
         if not converged(g):
@@ -751,9 +799,18 @@ def done(s: State):
     # Print out some feedback occasionally while the search is taking forever.
     global _ct
     _ct += 1
-    if _ct % 500 == 0:
-        print("- - - " + str([(wordle_solutions[g.word], g.prob_success[0])
-                              for g in init_state.alternative_next_guesses if converged(g)]) + " - - -")
+    if _ct % 5000 == 0:
+        print("cache_size = " + str(cache_size()) + ", hits = " + str(hits) + ", misses = " + str(misses) +
+              ", hit/miss = " + str((0.0 + hits)/misses) + ", " + str((process_time() - tl_start)/60) + " CPU minutes")
+        print("words found so far with policies guaranteeing 100% wins : " + str(
+            [wordle_solutions[g.word] for g in init_state.alternative_next_guesses if
+             cmp(g.prob_success, (1.0, 1.0)) == 0]))
+        converged_guesses = {wordle_solutions[g.word]: g.prob_success for g in init_state.alternative_next_guesses if converged(g)}
+        print(str(len(converged_guesses)) + " first guesses converged: " + str(converged_guesses))
+        in_progress_guesses = {wordle_solutions[g.word]: g.prob_success for g in init_state.alternative_next_guesses
+                               if not converged(g) and g.prob_success[0] >= 0.5}
+        print(str(len(in_progress_guesses)) + " others with prob > 50%: " + str(in_progress_guesses))
+
     # An alternative strategy is commented out below.
     #return converged(s)
     return all_guesses_done(s)
@@ -775,7 +832,7 @@ def choose_state(s: State):
     expand_all_alternatives = True
     best_chance_of_reducing_uncertainty = False  # unimplemented -- not sure how this would work, but the idea is to get the min & max range narrowed.
 
-    if expand_all_alternatives and len(s.alternative_next_guesses) < num_ones_in_bits(s.remaining_candidates):
+    if expand_all_alternatives and len(s.alternative_next_guesses) < s.get_num_remaining_candidates():
         return s
     # get best scoring alternative guess that hasn't converged
     best: Guess = None
@@ -803,6 +860,7 @@ def choose_state(s: State):
     if best is None or not best.next_states:
         # This is an error case and a good place to interrupt with a debugger.
         print("\n\n\nwhaaattttt?")
+        print("\nThis is a good time to attach a debugger and pause.")
         time.sleep(30)
 
     # get best scoring result state that hasn't converged
@@ -819,10 +877,10 @@ def choose_state(s: State):
             continue
         elif c < 0:
             continue
-        if num_ones_in_bits(cs.remaining_candidates) < num_ones_in_bits(best_state.remaining_candidates):
+        if cs.get_num_remaining_candidates() < best_state.get_num_remaining_candidates():
             best_state = cs
             continue
-        elif num_ones_in_bits(cs.remaining_candidates) > num_ones_in_bits(best_state.remaining_candidates):
+        elif cs.get_num_remaining_candidates() > best_state.get_num_remaining_candidates():
             continue
         c = cmp(cs.average_remaining_guesses, best_state.average_remaining_guesses)
         if c < 0:
@@ -831,6 +889,7 @@ def choose_state(s: State):
     if best_state is None:
         # This is an error state, so we sleep so that it's easier to catch in a debugger.
         print("\n\n\nwhaaattttttttttttttttt?")
+        print("\nThis is a good time to attach a debugger and pause.")
         time.sleep(30)
     best_state = choose_state(best_state)
     return best_state
@@ -847,6 +906,7 @@ def run():
 def run_no_init():
     """ Execute the search assuming that other things are initialized. """
     global init_state
+    global tl_start
     tl_start = process_time()
     while not done(init_state):
         s: State = choose_state(init_state)
@@ -860,9 +920,9 @@ def run_no_init():
     add_time = process_time() - tl_start
     print("seconds elapsed to build policy = " + str(add_time))
 
-def down_select_candidates(solution, guess, candidates):
-    remaining = remaining_candidates[solution][guess] & candidates
-    return remaining
+# def down_select_candidates(solution, guess, candidates):
+#     remaining = remaining_candidates[solution][guess] & candidates
+#     return remaining
 
 def expand(s: State):
     """ Generate guesses for states and the states to which the guesses transition. """
@@ -876,7 +936,6 @@ def expand(s: State):
     pos = 0
     n = 1
     cands = s.remaining_candidates
-    changed = False
     while True:
         candidate = nth_candidate(n, cands, pos, n-1)
         if candidate == -1:
@@ -886,57 +945,59 @@ def expand(s: State):
         n += 1  # for the next iteration of this loop
         pos = candidate + 1
         child_remaining_candidates = cands & remaining_candidates[candidate][g.word]
-        # if num_ones_in_bits(child_remaining_candidates) <= 1:
-        #     propagate_prob_success(s, 0.0, 1.0)
-        child = State()
-        # child.prior_state = s
-        child.remaining_candidates = child_remaining_candidates
-        child.prior_guesses = s.prior_guesses.copy()
-        child.prior_guesses.add(g.word)
+        cached_state = get_state(len(s.prior_guesses) + 1, child_remaining_candidates)
+        is_new = False
+        if cached_state is not None:
+            child = cached_state
+        else:
+            is_new = True
+            child = State()
+            child.remaining_candidates = child_remaining_candidates
+            child.prior_guesses = s.prior_guesses.copy()
+            child.prior_guesses.add(g.word)
+            child = get_or_cache_state(child)  # child should not change
         child.incoming_guesses.add(g)
         if child in g.next_states.keys():
             g.next_states[child] += 1
         else:
             g.next_states[child] = 1
-            # update probability of success
-            # old_prob = child.prob_success
-            if child_remaining_candidates < 1:
-                raise Exception('Unexpected number of child_remaining_candidates, ' +
-                                str(num_ones_in_bits(child_remaining_candidates)) + ' < 1')
-            child_prob = 1.0 / num_ones_in_bits(child_remaining_candidates)
+            if is_new:
+                # determine probability of success
+                if child_remaining_candidates < 1:
+                    raise Exception('Unexpected number of child_remaining_candidates, ' +
+                                    str(child.get_num_remaining_candidates()) + ' < 1')
+                child_prob = 1.0 / child.get_num_remaining_candidates()
 
-            # The "HERE!" labels below indicate where the code is incomplete.
-            ###  HERE!!!!!  ###
-            ###  HERE!!!!!  ###
-            ###  HERE!!!!!  ###
-            ###  HERE!!!!!  ###
-            avg_guesses = num_ones_in_bits(child_remaining_candidates) / 2  ###  HERE!!!!!  ###
-            ###  HERE!!!!!  ###
-            ###  HERE!!!!!  ###
-            ###  HERE!!!!!  ###
-            ###  HERE!!!!!  ###
+                # The "HERE!" labels below indicate where the code is incomplete.
+                ###  HERE!!!!!  ###
+                ###  HERE!!!!!  ###
+                ###  HERE!!!!!  ###
+                ###  HERE!!!!!  ###
+                avg_guesses = child.get_num_remaining_candidates() / 2  ###  HERE!!!!!  ###
+                ###  HERE!!!!!  ###
+                ###  HERE!!!!!  ###
+                ###  HERE!!!!!  ###
+                ###  HERE!!!!!  ###
 
-            if len(s.prior_guesses) == 4 or num_ones_in_bits(child_remaining_candidates) == 1:
-                child.prob_success = (child_prob, child_prob)
-                ###  HERE!!!!!  ###
-                ###  HERE!!!!!  ###
-                child.average_remaining_guesses = (avg_guesses, avg_guesses)  ## HERE!!!!!
-                ###  HERE!!!!!  ###
-                ###  HERE!!!!!  ###
-            elif len(s.prior_guesses) < 4:
-                child.prob_success = (child_prob, 1.0)
-                ###  HERE!!!!!  ###
-                ###  HERE!!!!!  ###
-                child.average_remaining_guesses = (1, avg_guesses)  ## HERE!!!!!
-                ###  HERE!!!!!  ###
-                ###  HERE!!!!!  ###
-            else:
-                raise Exception('Unexpected number of prior guesses, ' + str(len(s.prior_guesses)) + ' > 4')
-            if debug:
-                print(str(child))
+                if len(s.prior_guesses) == 4 or child.get_num_remaining_candidates()== 1:
+                    child.prob_success = (child_prob, child_prob)
+                    ###  HERE!!!!!  ###
+                    ###  HERE!!!!!  ###
+                    child.average_remaining_guesses = (avg_guesses, avg_guesses)  ## HERE!!!!!
+                    ###  HERE!!!!!  ###
+                    ###  HERE!!!!!  ###
+                elif len(s.prior_guesses) < 4:
+                    child.prob_success = (child_prob, 1.0)
+                    ###  HERE!!!!!  ###
+                    ###  HERE!!!!!  ###
+                    child.average_remaining_guesses = (1, avg_guesses)  ## HERE!!!!!
+                    ###  HERE!!!!!  ###
+                    ###  HERE!!!!!  ###
+                else:
+                    raise Exception('Unexpected number of prior guesses, ' + str(len(s.prior_guesses)) + ' > 4')
+                if debug:
+                    print(str(child))
     g.update_prob_success()
-
-    #if changed:
     propagate_guess_prob_success(s, g)
     return g.next_states.keys()
 
@@ -975,14 +1036,14 @@ def propagate_guess_prob_success(s: State, alt_guess: Guess):
     old_prob = s.prob_success
     # example: if alternative probs are [(0.0, 1.0), (0.1, 0.2)] then the parent is (0.1, 1.0)
     min_prob = max(ang.prob_success[0] for ang in s.alternative_next_guesses)
-    all_alts = not (len(s.alternative_next_guesses) < num_ones_in_bits(s.remaining_candidates))
+    all_alts = not (len(s.alternative_next_guesses) < s.get_num_remaining_candidates())
     if not all_alts:
         max_prob = 1.0
     else:
         max_prob = max(ang.prob_success[1] for ang in s.alternative_next_guesses)
     s.prob_success = (min_prob, max_prob)
     if debug:
-        print(str(s) + " for " + str(len(s.alternative_next_guesses)) + " out of " + str(num_ones_in_bits(s.remaining_candidates)))
+        print(str(s) + " for " + str(len(s.alternative_next_guesses)) + " out of " + str(s.get_num_remaining_candidates()))
     for g in s.incoming_guesses:
         changed = update_guess_from_child_state_prob_success(g, s, old_prob, s.prob_success)
         if changed:
@@ -1066,7 +1127,7 @@ def play(solution):
         print(w)
         count += 1
         if w == solution:
-            print("win in strategic choice among " + str(num_ones_in_bits(s.remaining_candidates)) + " alternatives")
+            print("win in strategic choice among " + str(s.get_num_remaining_candidates()) + " alternatives")
             break
         child_candidates = s.remaining_candidates & remaining_candidates[si][g.word]
         ss = list(filter(lambda cs: (cs.remaining_candidates == child_candidates), g.next_states.keys()))
@@ -1078,10 +1139,20 @@ def test():
     global wordle_solutions
 
     # You may uncomment a line below for a simpler test that doesn't include all 2315 words.
-    #   wordle_solutions = wordle_solutions[0:400]
-    #   wordle_solutions = ['abcd' + x for x in ['e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm']] + ['dfhjl', 'egikm']
+    # wordle_solutions = wordle_solutions[0:400]
+    # wordle_solutions = ['abcd' + x for x in ['e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm']] + ['dfhjl', 'egikm']
     run()
 
+def tree_size(s: State):
+    if s is None or not s.alternative_next_guesses:
+        return 0
+    ct = len(s.alternative_next_guesses)
+    for g in s.alternative_next_guesses:
+        if g is not None and g.next_states:
+            ct += len(g.next_states)
+            for ss in g.next_states:
+                ct += tree_size(ss)
+    return ct
 
 
 test()
