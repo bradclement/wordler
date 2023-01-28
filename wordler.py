@@ -793,23 +793,32 @@ def converged_arg(sg):
         return False
     return True
 
-_ct = 0
+def print_progress():
+    """ Print some stats and progress on finding the best words """
+    print("")
+    print("cache_size = " + str(cache_size()) + ", hits = " + str(hits) + ", misses = " + str(misses) +
+          ", hit/miss = " + (str(((0.0 + hits) / misses)) if misses != 0 else "N/A") + ", " + str((process_time() - tl_start) / 60) + " CPU minutes")
+    print("first guesses found so far with policies guaranteeing 100% wins: " +
+          str([wordle_solutions[g.word] for g in init_state.alternative_next_guesses if cmp(g.prob_success, (1.0, 1.0)) == 0]))
+    converged_guesses = {wordle_solutions[g.word]: g.prob_success for g in init_state.alternative_next_guesses if
+                         converged(g)}
+    print(str(len(converged_guesses)) + " first guesses converged: " + str(converged_guesses))
+    in_progress_guesses = {wordle_solutions[g.word]: g.prob_success for g in init_state.alternative_next_guesses
+                           if not converged(g) and g.prob_success[0] >= 0.5}
+    print(str(len(in_progress_guesses)) + " others with prob > 50%: " + str(in_progress_guesses))
+
+
+_ct = 0  # a counter used to occasionally report progress
+def occasionally_print_progress():
+    """ Print out some feedback occasionally while the search is taking forever. """
+    global _ct
+    if _ct % 5000 == 0:
+        print_progress()
+    _ct += 1
+
+
 def done(s: State):
     """ Whether the search/exploration of the state is complete, and the search can quit. """
-    # Print out some feedback occasionally while the search is taking forever.
-    global _ct
-    _ct += 1
-    if _ct % 5000 == 0:
-        print("cache_size = " + str(cache_size()) + ", hits = " + str(hits) + ", misses = " + str(misses) +
-              ", hit/miss = " + str((0.0 + hits)/misses) + ", " + str((process_time() - tl_start)/60) + " CPU minutes")
-        print("words found so far with policies guaranteeing 100% wins : " + str(
-            [wordle_solutions[g.word] for g in init_state.alternative_next_guesses if
-             cmp(g.prob_success, (1.0, 1.0)) == 0]))
-        converged_guesses = {wordle_solutions[g.word]: g.prob_success for g in init_state.alternative_next_guesses if converged(g)}
-        print(str(len(converged_guesses)) + " first guesses converged: " + str(converged_guesses))
-        in_progress_guesses = {wordle_solutions[g.word]: g.prob_success for g in init_state.alternative_next_guesses
-                               if not converged(g) and g.prob_success[0] >= 0.5}
-        print(str(len(in_progress_guesses)) + " others with prob > 50%: " + str(in_progress_guesses))
 
     # An alternative strategy is commented out below.
     #return converged(s)   # That will return once a best word is found.
@@ -908,21 +917,25 @@ def run_no_init():
     global init_state
     global tl_start
     tl_start = process_time()
+
     while not done(init_state):
+        # Print out some feedback occasionally while the search is taking forever.
+        occasionally_print_progress()
+
+        # choose and expand a state
         s: State = choose_state(init_state)
         if debug:
             print("popped " + str(s))
         _ = expand(s)
 
-    print("init_state success probability = " + str(init_state.prob_success) + ", avg guesses = " + str(init_state.average_remaining_guesses))
-    for g in init_state.alternative_next_guesses:
-        print("prob success of choosing " + wordle_solutions[g.word] + " = " + str(g.prob_success) + "; avg guesses = " + str(g.average_remaining_guesses))
+    print_progress()  # print one last time at the end
+    print("\ninit_state success probability = " + str(init_state.prob_success) + ", avg guesses = " + str(init_state.average_remaining_guesses))
+    if debug:
+        for g in init_state.alternative_next_guesses:
+            print("prob success of choosing " + wordle_solutions[g.word] + " = " + str(g.prob_success) + "; avg guesses = " + str(g.average_remaining_guesses))
     add_time = process_time() - tl_start
     print("seconds elapsed to build policy = " + str(add_time))
 
-# def down_select_candidates(solution, guess, candidates):
-#     remaining = remaining_candidates[solution][guess] & candidates
-#     return remaining
 
 def expand(s: State):
     """ Generate guesses for states and the states to which the guesses transition. """
@@ -1159,5 +1172,6 @@ def tree_size(s: State):
                 ct += tree_size(ss)
     return ct
 
-
-test()
+if __name__ == '__main__':
+    # Execute when the module is not initialized from an import statement.
+    test()
