@@ -973,10 +973,11 @@ def converged_arg(sg):
 def print_progress():
     """ Print some stats and progress on finding the best words """
     print("")
-    print("cache_size = " + str(cache_size()) + ", hits = " + str(hits) + ", misses = " + str(misses) +
-          ", hit/miss = " + (str(((0.0 + hits) / misses)) if misses != 0 else "N/A") + ", " + str((process_time() - tl_start) / 60) + " CPU minutes")
-    print("first guesses found so far with policies guaranteeing 100% wins: " +
-          str([wordle_solutions[g.word] for g in init_state.alternative_next_guesses if cmp(g.prob_success, (1.0, 1.0)) == 0]))
+    print("cached states = " + str(cache_size()) + ", hits = " + str(hits) + ", misses = " + str(misses) +
+          ", hit/miss = " + (str(((0.0 + hits) / misses)) if misses != 0 else "N/A") + ", " +
+          str((process_time() - tl_start) / 60) + " CPU minutes")
+    always_win = [wordle_solutions[g.word] for g in init_state.alternative_next_guesses if cmp(g.prob_success, (1.0, 1.0)) == 0]
+    print(str(len(always_win)) + " first guesses found so far with policies guaranteeing 100% wins: " + str(always_win))
     converged_guesses = {wordle_solutions[g.word]: g.prob_success for g in init_state.alternative_next_guesses if
                          converged(g)}
     print(str(len(converged_guesses)) + " first guesses converged: " + str(converged_guesses))
