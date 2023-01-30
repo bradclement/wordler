@@ -757,6 +757,8 @@ class Guess:
         self.prob_success: tuple = arr[2] if arr else (0.0, 1.0)
         self.average_remaining_guesses: tuple = arr[3] if arr else (1.0, 6.0)
         self.next_states = next_states_from(self.prev_state.num_prior_guesses + 1, arr[4])  # State -> int  # the States resulting from applying this Guess to the previous State mapped to a count of solutions that lead to the State, which is proportional to the likelihood of arriving in the State
+        for s in self.next_states.keys():
+            s.incoming_guesses.add(self)
 
     def __str__(self):
         """ A string representation of the Guess """
@@ -880,7 +882,7 @@ def read_cache_from_file(filename, as_binary=True):
     """
     Load the state cache (with the policy search tree) from file to avoid recomputation. It can merge with the
     existing state_cache, but it will overwrite probabilities potentially have inconsistent value.<br>
-    (TODO -- Some self-healing could be built in.)<br>
+    (TODO -- The merge could be smartly done to avoid inconsistency.)<br>
     It is better to reset the cache first by clearing each state_cache[i] dictionary.<br>
     IMPORTANT -- Be sure that init_state is replaced with the state in state_cache[0].
 
@@ -1077,7 +1079,11 @@ def choose_state(s: State):
         # This is an error state, so we sleep so that it's easier to catch in a debugger.
         print("\n\n\nwhaaattttttttttttttttt?")
         print("\nThis is a good time to attach a debugger and pause.")
-        time.sleep(30)
+        print("fixing guess: " + str(best))
+        best.update_prob_success()
+        print("fixed guess: " + str(best))
+        propagate_guess_prob_success( s, best )
+        return None
     best_state = choose_state(best_state)
     return best_state
 
@@ -1089,6 +1095,14 @@ def run():
     init_state = State()
     init_state.remaining_candidates = all_solution_candidates
     init_state = get_or_cache_state(init_state)
+    # uncomment below and fix the file name to load a policy you saved away.
+    # tl_start = process_time()
+    # try:
+    #     replace_policy_from_file("state_cache.bin")
+    # except Exception as e:
+    #     print(str(e))
+    # add_time = process_time() - tl_start
+    # print("seconds elapsed to load policy from file = " + str(add_time))
     run_no_init()
 
 def run_no_init():
@@ -1105,7 +1119,8 @@ def run_no_init():
         s: State = choose_state(init_state)
         if debug:
             print("popped " + str(s))
-        _ = expand(s)
+        if s:
+            _ = expand(s)
 
     print_progress()  # print one last time at the end
     print("\ninit_state success probability = " + str(init_state.prob_success) + ", avg guesses = " + str(init_state.average_remaining_guesses))
@@ -1280,7 +1295,7 @@ def propagate_guess_avg_num_guesses(s: State, alt_guess: Guess):
         min_avg = 1.0
     else:
         min_avg = min(ang.average_remaining_guesses[0] for ang in s.alternative_next_guesses)
-    s.average_remaining_guesses = (min_avg, max_avg)
+    s.average_remaining_guesses = (min_avg + 1, max_avg + 1)  # add one for it being the state of the previous guess
     if debug:
         print(str(s) + " for " + str(len(s.alternative_next_guesses)) + " out of " + str(s.get_num_remaining_candidates()))
     for g in s.incoming_guesses:
@@ -1321,13 +1336,15 @@ def num_ones_in_bits(i: int) -> int:
     Return the number of binary ones are in the int.  This is the number of items in the set for the bloom filter.
     It would be good to make this faster.
     """
+    return i.bit_count()  # bin(i).count("1") for python versions < 3.10
+
+def ones_old(i: int) -> int:
     ones = 0  # how many 1s found in binary
     while i > 0:
         if i % 2 == 1:
             ones += 1
         i >>= 1
     return ones
-
 
 def play(solution):
     """
@@ -1396,7 +1413,7 @@ def test():
 
     # You may uncomment a line below for a simpler test that doesn't include all 2315 words.
     #  wordle_solutions = wordle_solutions[0:400]
-    wordle_solutions = ['abcd' + x for x in ['e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm']] + ['dfhjl', 'egikm']
+    #  wordle_solutions = ['abcd' + x for x in ['e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm']] + ['dfhjl', 'egikm']
     run()
 
 if __name__ == '__main__':
