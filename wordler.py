@@ -415,6 +415,7 @@ def compute_remaining_candidates(solution, guess):
         min_numbers_of_letters[letter] = min(solution.count(letter), guess.count(letter))
 
     # Determine possible next guesses
+    unmatched_indices = set(range(5)) - match_indices - letters_in_wrong_place
     remaining_set = 0
     mask = 1
     for s_i in range(len(wordle_solutions)):
@@ -431,7 +432,7 @@ def compute_remaining_candidates(solution, guess):
 
         # If the letter in position i was unmatched or in wrong position w[i] must not equal guess[i]
         matched_unmatched_position = False
-        for z in set(range(5)) - match_indices:
+        for z in unmatched_indices:
             if w[z] == guess[z]:
                 matched_unmatched_position = True
                 break
