@@ -791,7 +791,11 @@ class Guess:
         num_child_states = sum(self.next_states.values())
         min_prob = sum([s.prob_success[0] * n for (s, n) in self.next_states.items()]) / num_child_states
         max_prob = sum([s.prob_success[1] * n for (s, n) in self.next_states.items()]) / num_child_states
+        if debug:
+            print( "updating prob success from " + str( self.prob_success ) + " to " +
+                   str( (min_prob, max_prob) ) + " for guess: " + str( self ) )
         self.prob_success = (min_prob, max_prob)
+
 
     def update_average_remaining_guesses(self):
         """
@@ -1207,8 +1211,9 @@ def choose_state(s: State):
         print("\nThis is a good place for a breakpoint for the debugger")
         print("fixing guess: " + str(best))
         best.update_prob_success()
+        best.update_average_remaining_guesses()
         print("fixed guess: " + str(best))
-        propagate_guess_prob_success( s, best )
+        propagate_guess_to_state( s, best )
         return None
     best_state = choose_state(best_state)
     return best_state
@@ -1281,8 +1286,6 @@ def expand(s: State):
     while True:
         candidate = nth_candidate(n, cands, pos, n-1)
         if candidate == -1:
-            # don't compute g.prob_success here; it is iteratively computed as g's children are added below
-            #g.prob_success = sum([ns.prob_success * g.next_states[ns] for ns in g.next_states.keys()]) / sum([g.next_states[ns] for ns in g.next_states.keys()])
             break
         n += 1  # for the next iteration of this loop
         pos = candidate + 1
@@ -1341,10 +1344,9 @@ def expand(s: State):
                 if debug:
                     print("created child state: " + str(child))
     g.update_prob_success()
-    propagate_guess_prob_success(s, g)
     if compute_num_guesses:
         g.update_average_remaining_guesses()
-        propagate_guess_avg_num_guesses(s, g)
+    propagate_guess_to_state(s, g)
     return g.next_states.keys()
 
 
@@ -1366,6 +1368,10 @@ def update_guess_from_child_state_prob_success(guess: Guess, child_state: State,
 
     min_prob = (new_child_prob[0] * num_occs - old_child_prob[0] * num_occs + old_prob[0] * num_child_states) / num_child_states
     max_prob = (new_child_prob[1] * num_occs - old_child_prob[1] * num_occs + old_prob[1] * num_child_states) / num_child_states
+    if debug:
+        print( "update_guess_from_child_state_prob_success(" + str(guess.word) + ") from " +
+               str( guess.prob_success ) + " to " + str((min_prob, max_prob)) +
+               " for child state " + str(child_state.remaining_candidates))
     guess.prob_success = (min_prob, max_prob)
     if cmp(guess.prob_success, old_prob) == 0:
         return False
@@ -1400,7 +1406,7 @@ def update_guess_from_child_state_average_remaining_guesses(guess: Guess, child_
         return False
     return True
 
-def propagate_guess_prob_success(s: State, alt_guess: Guess):
+def update_state_prob_success(s: State, alt_guess: Guess):
     '''
     Update the parent state's prob_success based on an update to that of one of the alternative next guesses.
     A state's prob_success is the max of those of its alternative guesses in that state.
@@ -1419,15 +1425,38 @@ def propagate_guess_prob_success(s: State, alt_guess: Guess):
         max_prob = max(ang.prob_success[1] for ang in s.alternative_next_guesses)
     s.prob_success = (min_prob, max_prob)
     if debug:
-        print("propagate_guess_prob_success(): " + str(s) + " for " + str(len(s.alternative_next_guesses)) + " out of " + str(s.get_num_remaining_candidates()))
-    for g in s.incoming_guesses:
-        changed = update_guess_from_child_state_prob_success(g, s, old_prob, s.prob_success)
-        if changed:
-            parent_state = g.prev_state
-            if parent_state is not None:
-                propagate_guess_prob_success(parent_state, g)
+        print("update_state_prob_success(): from " + str( old_prob ) + " to " + str( s.prob_success ) +
+              " for State: " + str(s) + " for " + str(len(s.alternative_next_guesses)) + " out of " +
+              str(s.get_num_remaining_candidates()))
+    if cmp(old_prob, s.prob_success) == 0:
+        return False
+    return True
 
-def propagate_guess_avg_num_guesses(s: State, alt_guess: Guess):
+def propagate_guess_to_state(s: State, alt_guess: Guess):
+    '''
+    Update the parent state's stats based on an update to that of one of the alternative next guesses.
+    :param s:
+    :param alt_guess:
+    :return:
+    '''
+    old_prob = s.prob_success
+    changed_prob = update_state_prob_success(s, alt_guess)
+    changed_avg_num_guesses = False
+    if compute_num_guesses:
+        old_avg = s.average_remaining_guesses
+        changed_avg_num_guesses = update_state_avg_num_guesses(s, alt_guess)
+    if changed_prob or changed_avg_num_guesses:
+        for g in s.incoming_guesses:
+            changed_prob = update_guess_from_child_state_prob_success(g, s, old_prob, s.prob_success)
+            changed_avg_num_guesses = False
+            if compute_num_guesses:
+                changed_avg_num_guesses = update_guess_from_child_state_average_remaining_guesses(g, s, old_avg, s.average_remaining_guesses)
+            if changed_prob or changed_avg_num_guesses:
+                parent_state = g.prev_state
+                if parent_state is not None:
+                    propagate_guess_to_state(parent_state, g)
+
+def update_state_avg_num_guesses(s: State, alt_guess: Guess):
     '''
     Update the parent state's average_remaining_guesses based on an update to that of one of the alternative next guesses.
     A state's average_remaining_guesses is the max of those of its alternative guesses in that state.
@@ -1436,7 +1465,7 @@ def propagate_guess_avg_num_guesses(s: State, alt_guess: Guess):
     :return:
     '''
     if not compute_num_guesses:
-        return
+        return False
     old_avg = s.average_remaining_guesses
     heapq.heapify(s.alternative_next_guesses)  # TODO -- this could be more efficient since only alt_guess changed; just do rotations on own here instead of relying on heapq
     # example: if alternative probs are [(0.0, 1.0), (0.1, 0.2)] then the parent is (0.1, 1.0)
@@ -1450,12 +1479,10 @@ def propagate_guess_avg_num_guesses(s: State, alt_guess: Guess):
     if debug:
         print( "updated avg num guesses from " + str( old_avg ) + " to " + str( s.average_remaining_guesses ) + " for State: " + str(
             s ) + " with " + str(s.get_num_remaining_candidates()) + " remaining candidates")
-    for g in s.incoming_guesses:
-        changed = update_guess_from_child_state_average_remaining_guesses(g, s, old_avg, s.average_remaining_guesses)
-        if changed:
-            parent_state = g.prev_state
-            if parent_state is not None:
-                propagate_guess_avg_num_guesses(parent_state, g)
+    if cmp(old_avg, s.average_remaining_guesses) == 0:
+        return False
+    return True
+
 
 def nth_candidate(n: int, candidates: int, pos=0, ones=0):
     """
@@ -1685,7 +1712,7 @@ def test():
 
     # You may uncomment a line below for a simpler test that doesn't include all 2315 words.
     #
-    # wordle_solutions = wordle_solutions[0:400]
+    #  wordle_solutions = wordle_solutions[0:400]
     # wordle_solutions = ['abcd' + x for x in ['e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm']] + ['dfhjl', 'egikm']
     #          ^
     # For this ^ case if using the optimal policy for 'dfhjl' as the first word, there are 4 cases:
