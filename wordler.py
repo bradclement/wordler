@@ -290,6 +290,7 @@
 #       - Other guesses are like the previous two
 #
 #
+import os
 import queue
 import heapq
 import random
@@ -298,7 +299,7 @@ import time
 from time import process_time
 from typing import Set, Any
 import pickle
-
+from zipfile import ZipFile
 
 random.seed(333)
 
@@ -545,12 +546,12 @@ class State:
         self.alternative_next_guesses = self.alternative_next_guesses_from(arr[4])
 
     def alternative_next_guesses_from(self, arr: list):
-        ang = set()
+        ang = []
         if not arr:
             return ang
         for g_arr in arr:
             new_g_arr = g_arr[0:1] + [self] + g_arr[1:]
-            ang.add(Guess(new_g_arr))
+            ang.append(Guess(new_g_arr))
         return ang
 
     def get_num_remaining_candidates(self):
@@ -858,6 +859,12 @@ class Guess:
         if sc and not oc:
             return False
         if optimize_for_winning:
+            sbad = self.prev_state.num_prior_guesses > 0 and self.prob_success[1] < self.prev_state.prob_success[0] - 1e-12
+            obad = other.prev_state.num_prior_guesses > 0 and other.prob_success[1] < other.prev_state.prob_success[0] - 1e-12
+            if sbad and not obad:
+                return False
+            if obad and not sbad:
+                return True
             c = cmp( self.prob_success, other.prob_success )
             if c > 0:
                 return True
@@ -985,7 +992,7 @@ def cache_state_from(arr):
         s = get_or_cache_state(s)
     deserialize_state(s, arr)
 
-def write_cache_to_file(filename, as_binary=True):
+def write_cache_to_file(filename, as_binary=True, zip=True):
     """
     Write the state cache (including the policy search tree) to file so that it may be loaded in another run
     to avoid computation.
@@ -1001,6 +1008,14 @@ def write_cache_to_file(filename, as_binary=True):
                     pickle.dump(arr, f)
                 else:
                     f.write(str(arr) + "\n")
+    if zip:
+        with ZipFile(filename + '.zip', 'w', zipfile.ZIP_DEFLATED) as myzip:
+            myzip.write(filename)
+        os.remove(filename)
+        filename = filename + '.zip'
+
+
+    print('\nwrote cache to ' + filename + "\n")
 
 
 def read_cache_from_file(filename, as_binary=True):
@@ -1130,6 +1145,12 @@ def occasionally_print_progress():
         print_progress()
     _ct += 1
 
+_ctp = 1
+def occasionally_write_policy():
+    global _ctp
+    if _ctp % 50000 == 0:
+        write_cache_to_file('checkpoint_policy.bin', True)
+    _ctp += 1
 
 def done(s: State):
     """ Whether the search/exploration of the state is complete, and the search can quit. """
@@ -1150,7 +1171,11 @@ def cmp(pp1, pp2):
 
 def choose_guess(s: State):
     """ Choose which Guess to explore to find the next State to expand """
-    g = s.alternative_next_guesses[0]  # we keep the guesses ordered as a priority queue
+    i = 0
+    g = s.alternative_next_guesses[i]  # we keep the guesses ordered as a priority queue
+    if optimize_for_winning and g.prev_state.num_prior_guesses > 0 and g.prob_success[1] <= s.prob_success[0] - 1e-12:
+        # bad guess
+        print("\nInefficiently expanding inferior guess!\n")
     return g
 
 def choose_state_from_guess( g: Guess ):
@@ -1199,7 +1224,10 @@ def choose_state(s: State):
         # This is an error case and a good place to interrupt with a debugger.
         print("\n\n\nwhaaattttt?")
         print("\nThis is a good time to attach a debugger and pause.")
-        time.sleep(30)
+        time.sleep(10)
+        print("\nfixing state: " + str(s))
+        update_state_avg_num_guesses(s, best)
+        print("\nfixed state: " + str(s))
         return None
 
     # get best scoring result state that hasn't converged
@@ -1229,7 +1257,7 @@ def run():
     # uncomment below and fix the file name to load a policy you saved away.
     # tl_start = process_time()
     # try:
-    #     replace_policy_from_file("state_cache_bigger.bin")
+    #     replace_policy_from_file("checkpoint_policy.bin")
     # except Exception as e:
     #     print(str(e))
     # add_time = process_time() - tl_start
@@ -1250,6 +1278,7 @@ def run_no_init():
     while not done(init_state):
         # Print out some feedback occasionally while the search is taking forever.
         occasionally_print_progress()
+        occasionally_write_policy()
 
         # choose and expand a state
         s: State = choose_state(init_state)
@@ -1432,7 +1461,7 @@ def update_state_prob_success(s: State, alt_guess: Guess):
         return False
     return True
 
-def propagate_guess_to_state(s: State, alt_guess: Guess):
+def propagate_guess_to_state(s: State, alt_guess: Guess, skip_prob: bool = False):
     '''
     Update the parent state's stats based on an update to that of one of the alternative next guesses.
     :param s:
@@ -1440,21 +1469,25 @@ def propagate_guess_to_state(s: State, alt_guess: Guess):
     :return:
     '''
     old_prob = s.prob_success
-    changed_prob = update_state_prob_success(s, alt_guess)
+    if skip_prob:
+        changed_prob = False
+    else:
+        changed_prob = update_state_prob_success(s, alt_guess)
     changed_avg_num_guesses = False
     if compute_num_guesses:
         old_avg = s.average_remaining_guesses
         changed_avg_num_guesses = update_state_avg_num_guesses(s, alt_guess)
     if changed_prob or changed_avg_num_guesses:
         for g in s.incoming_guesses:
-            changed_prob = update_guess_from_child_state_prob_success(g, s, old_prob, s.prob_success)
+            if changed_prob:
+                changed_prob = update_guess_from_child_state_prob_success(g, s, old_prob, s.prob_success)
             changed_avg_num_guesses = False
             if compute_num_guesses:
                 changed_avg_num_guesses = update_guess_from_child_state_average_remaining_guesses(g, s, old_avg, s.average_remaining_guesses)
             if changed_prob or changed_avg_num_guesses:
                 parent_state = g.prev_state
                 if parent_state is not None:
-                    propagate_guess_to_state(parent_state, g)
+                    propagate_guess_to_state(parent_state, g, not changed_prob)
 
 def update_state_avg_num_guesses(s: State, alt_guess: Guess):
     '''
@@ -1469,13 +1502,21 @@ def update_state_avg_num_guesses(s: State, alt_guess: Guess):
     old_avg = s.average_remaining_guesses
     heapq.heapify(s.alternative_next_guesses)  # TODO -- this could be more efficient since only alt_guess changed; just do rotations on own here instead of relying on heapq
     # example: if alternative probs are [(0.0, 1.0), (0.1, 0.2)] then the parent is (0.1, 1.0)
-    max_avg = min(ang.average_remaining_guesses[1] for ang in s.alternative_next_guesses)
     all_alts = not (len(s.alternative_next_guesses) < s.get_num_remaining_candidates())
-    if not all_alts:
-        min_avg = 1.0
+    # If prob_success has already converged, then we need to determine which guesses could be tied for that probability
+    if not optimize_for_winning:
+        gs = s.alternative_next_guesses
+    elif all_alts and s.prob_success[1] - s.prob_success[0] < 1e-12:
+        gs = [g for g in s.alternative_next_guesses if g.prob_success[1] - s.prob_success[1] >= -1e-12]
     else:
-        min_avg = min(ang.average_remaining_guesses[0] for ang in s.alternative_next_guesses)
-    s.average_remaining_guesses = (min_avg + 1, max_avg + 1)  # add one for it being the state of the previous guess
+        # eliminate guesses that we know cannot be the policy choice
+        gs = [g for g in s.alternative_next_guesses if g.prob_success[1] - s.prob_success[0] >= -1e-12]
+    pess_avg = min(ang.average_remaining_guesses[1] for ang in gs)
+    if not all_alts:
+        opt_avg = 0.0
+    else:
+        opt_avg = min(ang.average_remaining_guesses[0] for ang in gs)
+    s.average_remaining_guesses = (opt_avg + 1, pess_avg + 1)  # add one for it being the state of the previous guess
     if debug:
         print( "updated avg num guesses from " + str( old_avg ) + " to " + str( s.average_remaining_guesses ) + " for State: " + str(
             s ) + " with " + str(s.get_num_remaining_candidates()) + " remaining candidates")
@@ -1516,6 +1557,8 @@ def num_ones_in_bits(i: int) -> int:
     """
     return i.bit_count()  # bin(i).count("1") for python versions < 3.10
 
+_play_stats = {}
+
 def play(solution, quiet=False, first_guess=None):
     """
     Play wordle for the provided solution based on the policy that has been computed.
@@ -1524,16 +1567,19 @@ def play(solution, quiet=False, first_guess=None):
     :param first_guess
     :return: how many guesses were attempted.
     """
+    global _play_stats
     si = word_indices[solution]
     s: State = init_state
     child_candidates = None
     count = 0
+    states = [init_state]
     while True:
         # If no more guesses for states, pick random among remaining candidates
         if not s and child_candidates:
             csi = random.randint(1, num_ones_in_bits(child_candidates))
             guess = nth_candidate(csi, child_candidates)
-            print(wordle_solutions[guess])
+            if not quiet:
+                print(wordle_solutions[guess])
             count += 1
             if guess == si:
                 if not quiet:
@@ -1576,6 +1622,13 @@ def play(solution, quiet=False, first_guess=None):
         child_candidates = s.remaining_candidates & remaining_candidates[si][g.word]
         ss = list(filter(lambda cs: (cs.remaining_candidates == child_candidates), g.next_states.keys()))
         s = ss[0] if ss else None
+        states.append(s)
+    if count <= 6:
+        for sss in states:
+            if sss in _play_stats:
+                _play_stats[sss].append(count)
+            else:
+                _play_stats[sss] = [count]
     return count
 
 def tree_size(s: State):
@@ -1713,7 +1766,7 @@ def test():
     # You may uncomment a line below for a simpler test that doesn't include all 2315 words.
     #
     #  wordle_solutions = wordle_solutions[0:400]
-    # wordle_solutions = ['abcd' + x for x in ['e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm']] + ['dfhjl', 'egikm']
+    #  wordle_solutions = ['abcd' + x for x in ['e', 'f', 'g', 'h', 'i', 'j', 'k', 'l', 'm']] + ['dfhjl', 'egikm']
     #          ^
     # For this ^ case if using the optimal policy for 'dfhjl' as the first word, there are 4 cases:
     #  - one guess wins for 'dfhjl'
